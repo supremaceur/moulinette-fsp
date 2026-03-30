@@ -12,11 +12,61 @@ logger = logging.getLogger(__name__)
 
 
 def load_fsp(file) -> pd.DataFrame:
-    """Charge le fichier FSP à nous, dédoublonne sur Nom du compte, extrait le CODE PDV (5 chiffres)."""
-    df = pd.read_excel(file)
-    logger.info(f"FSP chargé : {df.shape[0]} lignes, {df.shape[1]} colonnes")
+    """
+    Charge le fichier FSP à nous (export Salesforce brut ou nettoyé).
+    Nettoyage automatique :
+      - Détecte la ligne d'en-tête (contenant "Nom du compte")
+      - Supprime les colonnes vides (colonne A et C du fichier brut)
+      - Supprime les lignes footer (Total, copyright...)
+      - Dédoublonne sur Nom du compte
+      - Extrait le CODE PDV
+    """
+    # --- Étape 1 : lire le fichier brut (sans header) pour détecter la structure ---
+    df_raw = pd.read_excel(file, header=None)
+    logger.info(f"FSP brut chargé : {df_raw.shape[0]} lignes, {df_raw.shape[1]} colonnes")
 
-    # Trouver la colonne "Nom du compte"
+    # --- Étape 2 : trouver la ligne d'en-tête (celle qui contient "Nom du compte") ---
+    header_row = None
+    for i in range(min(30, len(df_raw))):
+        row_values = df_raw.iloc[i].astype(str).str.lower().tolist()
+        if any("nom du compte" in v for v in row_values):
+            header_row = i
+            break
+
+    if header_row is not None:
+        # Fichier brut Salesforce : relire avec le bon header
+        file.seek(0)
+        df = pd.read_excel(file, header=header_row)
+        logger.info(f"En-tête détecté à la ligne {header_row}")
+    else:
+        # Fichier déjà nettoyé : relire normalement
+        file.seek(0)
+        df = pd.read_excel(file)
+        logger.info("Fichier FSP déjà nettoyé (en-tête en ligne 0)")
+
+    # --- Étape 3 : supprimer colonnes vides et colonnes "Unnamed" parasites ---
+    cols_before = len(df.columns)
+    df = df.dropna(axis=1, how="all")
+    unnamed_cols = [c for c in df.columns if str(c).startswith("Unnamed")]
+    if unnamed_cols:
+        df = df.drop(columns=unnamed_cols)
+    if cols_before != len(df.columns):
+        logger.info(f"Colonnes inutiles supprimées : {cols_before} → {len(df.columns)}")
+
+    # --- Étape 4 : supprimer les lignes footer (Total, copyright, etc.) ---
+    total_idx = None
+    for col in df.columns:
+        mask = df[col].astype(str).str.lower().str.strip() == "total"
+        if mask.any():
+            total_idx = mask.idxmax()
+            break
+
+    if total_idx is not None:
+        before = len(df)
+        df = df.loc[:total_idx - 1].copy()
+        logger.info(f"Lignes footer supprimées à partir de la ligne {total_idx} : {before} → {len(df)}")
+
+    # --- Étape 5 : trouver la colonne "Nom du compte" ---
     nom_col = _find_column(df, ["Nom du compte", "nom du compte", "NOM DU COMPTE"])
     if nom_col is None:
         for col in df.columns:
@@ -31,12 +81,12 @@ def load_fsp(file) -> pd.DataFrame:
             "Le fichier doit contenir une colonne avec des valeurs au format 'XXXXX - NOM DU PDV'."
         )
 
-    # Dédoublonnage sur "Nom du compte"
+    # --- Étape 6 : dédoublonnage ---
     before = len(df)
     df = df.drop_duplicates(subset=[nom_col]).copy()
     logger.info(f"FSP dédoublonné sur '{nom_col}' : {before} → {len(df)} lignes")
 
-    # Extraire le code 5 chiffres (XXXXX) depuis "XXXXX - NOM"
+    # --- Étape 7 : extraire CODE PDV ---
     df["CODE_PDV"] = df[nom_col].astype(str).str.extract(r"^(\d+)")[0]
     df["CODE_PDV"] = pd.to_numeric(df["CODE_PDV"], errors="coerce").astype("Int64")
     logger.info(f"CODE_PDV extraits : {df['CODE_PDV'].notna().sum()} valides sur {len(df)}")
