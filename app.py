@@ -147,7 +147,7 @@ st.markdown(PMU_CSS, unsafe_allow_html=True)
 st.markdown("""
 <div class="main-header">
     <h1>Moulinette FSP</h1>
-    <p>Analyse et comparaison des fichiers FSP</p>
+    <p>Tri et filtrage des FSP</p>
 </div>
 """, unsafe_allow_html=True)
 
@@ -295,3 +295,10 @@ if st.button("🚀  Lancer l'analyse", type="primary", disabled=not (fsp_file an
 
 elif not fsp_file or not chris_file:
     st.markdown('<div class="info-banner">Importez les 2 fichiers puis cliquez sur <strong>Lancer l\'analyse</strong></div>', unsafe_allow_html=True)
+
+# --- Footer confidentialité ---
+st.markdown("""
+<div style="text-align:center; margin-top:3rem; padding:1rem; border-top:1px solid #333; color:#888; font-size:0.8rem;">
+    🔒 Aucune donnée n'est conservée. Les fichiers sont traités en mémoire et supprimés dès la fin de la session.
+</div>
+""", unsafe_allow_html=True)
