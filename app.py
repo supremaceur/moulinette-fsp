@@ -232,11 +232,15 @@ if st.button("🚀  Lancer l'analyse", type="primary", disabled=not (fsp_file an
                 df_diff = compare_data(df_fsp, df_chris)
                 df_no_bets = filter_no_bets(df_fsp, df_chris)
 
+            # Calculer la synthèse (FSP restantes après filtrage)
+            from utils import compute_remaining
+            df_remaining = compute_remaining(df_fsp, df_diff, df_no_bets)
+            nb_remaining = len(df_remaining)
+
             # --- Statistiques ---
             st.markdown("")
             st.markdown('<div class="section-title">Résumé</div>', unsafe_allow_html=True)
 
-            # Compter uniquement les lignes avec un Nom du compte valide
             nb_fsp = df_fsp["CODE_PDV"].notna().sum()
 
             m1, m2, m3, m4 = st.columns(4)
@@ -248,11 +252,6 @@ if st.button("🚀  Lancer l'analyse", type="primary", disabled=not (fsp_file an
             # --- Tableaux résultats en onglets ---
             st.markdown("")
             st.markdown('<div class="section-title">Résultats</div>', unsafe_allow_html=True)
-
-            # Calculer la synthèse (FSP restantes après filtrage)
-            from utils import compute_remaining
-            df_remaining = compute_remaining(df_fsp, df_diff, df_no_bets)
-            nb_remaining = len(df_remaining)
 
             tab1, tab2, tab3 = st.tabs([
                 f"Non présent Christophe ({len(df_diff)})",
