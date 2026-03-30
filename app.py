@@ -232,10 +232,10 @@ if st.button("🚀  Lancer l'analyse", type="primary", disabled=not (fsp_file an
                 df_diff = compare_data(df_fsp, df_chris)
                 df_no_bets = filter_no_bets(df_fsp, df_chris)
 
-            # Calculer la synthèse (FSP restantes après filtrage)
-            from utils import compute_remaining
-            df_remaining = compute_remaining(df_fsp, df_diff, df_no_bets)
-            nb_remaining = len(df_remaining)
+            # Fusion des 2 tableaux (Nom du compte uniquement)
+            from utils import merge_results
+            df_merged = merge_results(df_fsp, df_diff, df_no_bets)
+            nb_merged = len(df_merged)
 
             # --- Statistiques ---
             st.markdown("")
@@ -247,7 +247,7 @@ if st.button("🚀  Lancer l'analyse", type="primary", disabled=not (fsp_file an
             m1.metric("FSP du jour", nb_fsp)
             m2.metric("Non présent Christophe", len(df_diff))
             m3.metric("Sans prise de paris", len(df_no_bets))
-            m4.metric("FSP restantes", nb_remaining)
+            m4.metric("FSP restantes", nb_merged)
 
             # --- Tableaux résultats en onglets ---
             st.markdown("")
@@ -256,7 +256,7 @@ if st.button("🚀  Lancer l'analyse", type="primary", disabled=not (fsp_file an
             tab1, tab2, tab3 = st.tabs([
                 f"Non présent Christophe ({len(df_diff)})",
                 f"Sans prise de paris ({len(df_no_bets)})",
-                f"FSP restantes ({nb_remaining})",
+                f"FSP restantes ({nb_merged})",
             ])
 
             with tab1:
@@ -274,15 +274,14 @@ if st.button("🚀  Lancer l'analyse", type="primary", disabled=not (fsp_file an
                     st.success("Tous les PDV présents ont des prises de paris.")
 
             with tab3:
-                if nb_remaining > 0:
-                    display_cols = [c for c in df_remaining.columns if c != "CODE_PDV"]
-                    st.dataframe(df_remaining[display_cols].reset_index(drop=True), use_container_width=True)
+                if nb_merged > 0:
+                    st.dataframe(df_merged, use_container_width=True)
                 else:
-                    st.info("Aucun PDV restant après filtrage.")
+                    st.info("Aucun PDV à afficher.")
 
             # --- Export ---
             st.markdown("")
-            excel_data = export_results(df_diff, df_no_bets, df_fsp, df_remaining)
+            excel_data = export_results(df_diff, df_no_bets, df_fsp, df_merged)
             st.download_button(
                 label="📥  Télécharger le résultat en Excel",
                 data=excel_data,

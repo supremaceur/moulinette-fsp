@@ -188,36 +188,54 @@ def filter_no_bets(df_fsp: pd.DataFrame, df_chris: pd.DataFrame) -> pd.DataFrame
     return result
 
 
-def compute_remaining(df_fsp: pd.DataFrame, df_diff: pd.DataFrame, df_no_bets: pd.DataFrame) -> pd.DataFrame:
+def merge_results(df_fsp: pd.DataFrame, df_diff: pd.DataFrame, df_no_bets: pd.DataFrame) -> pd.DataFrame:
     """
-    FSP restantes : PDV présents dans Christophe ET avec prise de paris.
-    = FSP total - (non présent Christophe) - (sans prise de paris)
+    Fusionne les 2 tableaux en un seul avec la colonne Nom du compte.
+    - Tableau 1 (non présent Christophe) → Nom du compte directement depuis FSP
+    - Tableau 2 (sans prise de paris) → retrouver Nom du compte via CODE_PDV/NO_PDV
     """
-    # Codes à exclure : tableau 1 (absents de Christophe)
-    excluded_codes = set(df_diff["CODE_PDV"].dropna().astype(int))
+    # Trouver la colonne Nom du compte
+    nom_col = None
+    for c in df_fsp.columns:
+        if "nom du compte" in c.lower():
+            nom_col = c
+            break
 
-    # Codes à exclure : tableau 2 (sans paris) — viennent de Christophe, colonne NO_PDV
-    excluded_codes_bets = set(df_no_bets["NO_PDV"].dropna().astype(int))
+    rows = []
 
-    mask = df_fsp["CODE_PDV"].apply(
-        lambda x: pd.notna(x) and int(x) not in excluded_codes and int(x) not in excluded_codes_bets
-    )
-    result = df_fsp[mask].copy()
-    logger.info(f"FSP restantes : {len(result)} lignes")
+    # Tableau 1 : vient de FSP, on a directement Nom du compte
+    if nom_col and len(df_diff) > 0:
+        for _, r in df_diff.iterrows():
+            rows.append({"Nom du compte": r[nom_col]})
+
+    # Tableau 2 : vient de Christophe, on retrouve Nom du compte via FSP
+    if len(df_no_bets) > 0:
+        fsp_lookup = df_fsp.set_index("CODE_PDV")
+        for _, r in df_no_bets.iterrows():
+            code = r["NO_PDV"]
+            if nom_col and code in fsp_lookup.index:
+                nom = fsp_lookup.loc[code, nom_col]
+                if isinstance(nom, pd.Series):
+                    nom = nom.iloc[0]
+            else:
+                nom = str(code)
+            rows.append({"Nom du compte": nom})
+
+    result = pd.DataFrame(rows) if rows else pd.DataFrame(columns=["Nom du compte"])
+    logger.info(f"FSP restantes (fusion) : {len(result)} lignes")
     return result
 
 
-def export_results(df_diff: pd.DataFrame, df_no_bets: pd.DataFrame, df_fsp: pd.DataFrame, df_remaining: pd.DataFrame) -> bytes:
-    """Génère un fichier Excel avec 3 onglets : différences, sans paris, FSP restantes."""
+def export_results(df_diff: pd.DataFrame, df_no_bets: pd.DataFrame, df_fsp: pd.DataFrame, df_merged: pd.DataFrame) -> bytes:
+    """Génère un fichier Excel avec 3 onglets : différences, sans paris, FSP restantes (fusion)."""
     output = io.BytesIO()
 
     with pd.ExcelWriter(output, engine="openpyxl") as writer:
         cols_diff = [c for c in df_diff.columns if c != "CODE_PDV"]
         cols_bets = [c for c in df_no_bets.columns if c != "CODE_PDV"]
-        cols_remain = [c for c in df_remaining.columns if c != "CODE_PDV"]
 
         df_diff[cols_diff].to_excel(writer, sheet_name="Non présent Christophe", index=False)
         df_no_bets[cols_bets].to_excel(writer, sheet_name="Sans prise de paris", index=False)
-        df_remaining[cols_remain].to_excel(writer, sheet_name="FSP restantes", index=False)
+        df_merged.to_excel(writer, sheet_name="FSP restantes", index=False)
 
     return output.getvalue()
