@@ -236,24 +236,29 @@ if st.button("🚀  Lancer l'analyse", type="primary", disabled=not (fsp_file an
             st.markdown("")
             st.markdown('<div class="section-title">Résumé</div>', unsafe_allow_html=True)
 
+            # Compter uniquement les lignes avec un Nom du compte valide
+            nb_fsp = df_fsp["CODE_PDV"].notna().sum()
+
             m1, m2, m3, m4 = st.columns(4)
-            m1.metric("FSP du jour", len(df_fsp))
+            m1.metric("FSP du jour", nb_fsp)
             m2.metric("Non présent Christophe", len(df_diff))
             m3.metric("Sans prise de paris", len(df_no_bets))
-            m4.metric("FSP restante", len(df_fsp) - len(df_diff) - len(df_no_bets))
+            m4.metric("FSP restantes", nb_remaining)
 
             # --- Tableaux résultats en onglets ---
             st.markdown("")
             st.markdown('<div class="section-title">Résultats</div>', unsafe_allow_html=True)
 
+            # Calculer la synthèse (FSP restantes après filtrage)
+            from utils import compute_remaining
+            df_remaining = compute_remaining(df_fsp, df_diff, df_no_bets)
+            nb_remaining = len(df_remaining)
+
             tab1, tab2, tab3 = st.tabs([
                 f"Non présent Christophe ({len(df_diff)})",
                 f"Sans prise de paris ({len(df_no_bets)})",
-                f"Synthèse ({len(df_diff) + len(df_no_bets)})",
+                f"FSP restantes ({nb_remaining})",
             ])
-
-            nom_col = df_fsp.columns[df_fsp.columns.str.lower().str.contains("nom du compte")].tolist()
-            nom_col = nom_col[0] if nom_col else None
 
             with tab1:
                 if len(df_diff) > 0:
@@ -270,33 +275,15 @@ if st.button("🚀  Lancer l'analyse", type="primary", disabled=not (fsp_file an
                     st.success("Tous les PDV présents ont des prises de paris.")
 
             with tab3:
-                # Fusion : Nom du compte pour tableau 1, reconstitué pour tableau 2
-                rows = []
-                if nom_col and len(df_diff) > 0:
-                    for _, r in df_diff.iterrows():
-                        rows.append({"Nom du compte": r[nom_col], "Catégorie": "Non présent Christophe"})
-                if len(df_no_bets) > 0:
-                    # Tableau 2 vient de Christophe : on retrouve le Nom du compte via FSP
-                    fsp_lookup = df_fsp.set_index("CODE_PDV")
-                    for _, r in df_no_bets.iterrows():
-                        code = r["NO_PDV"]
-                        if nom_col and code in fsp_lookup.index:
-                            nom = fsp_lookup.loc[code, nom_col]
-                            if isinstance(nom, pd.Series):
-                                nom = nom.iloc[0]
-                        else:
-                            nom = str(code)
-                        rows.append({"Nom du compte": nom, "Catégorie": "Sans prise de paris"})
-
-                if rows:
-                    df_synthese = pd.DataFrame(rows)
-                    st.dataframe(df_synthese, use_container_width=True)
+                if nb_remaining > 0:
+                    display_cols = [c for c in df_remaining.columns if c != "CODE_PDV"]
+                    st.dataframe(df_remaining[display_cols].reset_index(drop=True), use_container_width=True)
                 else:
-                    st.success("Aucune anomalie détectée.")
+                    st.info("Aucun PDV restant après filtrage.")
 
             # --- Export ---
             st.markdown("")
-            excel_data = export_results(df_diff, df_no_bets, df_fsp)
+            excel_data = export_results(df_diff, df_no_bets, df_fsp, df_remaining)
             st.download_button(
                 label="📥  Télécharger le résultat en Excel",
                 data=excel_data,
